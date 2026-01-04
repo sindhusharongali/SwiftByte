@@ -1,13 +1,66 @@
+using MassTransit;
+using StackExchange.Redis;
+using Polly;
+using Polly.CircuitBreaker;
+using OrderService.Saga;
+using OrderService.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
+
+// Configure Redis
+var redisConnection = ConnectionMultiplexer.Connect("localhost:6379");
+builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
+
+// Configure MassTransit with RabbitMQ
+builder.Services.AddMassTransit(x =>
+{
+    x.AddSagaStateMachine<OrderStateMachine, OrderState>()
+        .InMemoryRepository();
+
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        cfg.Host("localhost", "/", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
+
+        cfg.ConfigureEndpoints(context);
+    });
+});
+
+// Configure Polly Circuit Breaker for resilience
+var circuitBreakerPolicy = Policy
+    .Handle<HttpRequestException>()
+    .Or<TimeoutException>()
+    .OrResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+    .CircuitBreakerAsync<HttpResponseMessage>(
+        handledEventsAllowedBeforeBreaking: 3,
+        durationOfBreak: TimeSpan.FromSeconds(30),
+        onBreak: (outcome, timespan) =>
+        {
+            Console.WriteLine($"Circuit breaker opened for {timespan.TotalSeconds} seconds");
+        },
+        onReset: () =>
+        {
+            Console.WriteLine("Circuit breaker reset");
+        });
+
+builder.Services.AddHttpClient("PaymentService")
+    .AddPolicyHandler(circuitBreakerPolicy);
+
+builder.Services.AddScoped<IPaymentServiceClient, PaymentServiceClient>(provider =>
+    new PaymentServiceClient(
+        provider.GetRequiredService<IHttpClientFactory>().CreateClient("PaymentService"),
+        provider.GetRequiredService<ILogger<PaymentServiceClient>>())
+);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -15,30 +68,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+app.MapControllers();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

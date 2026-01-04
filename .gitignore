@@ -1,0 +1,68 @@
+# Build results
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.so
+*.dylib
+
+# Visual Studio
+.vs/
+.vscode/
+*.sln.iml
+*.user
+*.suo
+*.DotSettings
+
+# dotnet
+.dotnet/
+
+# NuGet
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+
+# IDE
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+appsettings.local.json
+appsettings.Development.local.json
+
+# Logs
+logs/
+*.log
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Docker
+.dockerignore
+
+# IDE files
+*.code-workspace
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE specific
+*.vscode
+.idea
+
+# Local development
+launchSettings.json.local
